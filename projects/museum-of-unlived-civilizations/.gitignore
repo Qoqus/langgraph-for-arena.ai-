@@ -13,3 +13,6 @@ museum-state/
 *.sqlite-journal
 *.sqlite-wal
 *.sqlite-shm
+
+# Situs statis hasil `museum export` (diunggah ke Netlify, tidak di-commit).
+dist/

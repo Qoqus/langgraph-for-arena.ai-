@@ -254,10 +254,29 @@ def load_catalog_payload(paths: MuseumPaths) -> dict[str, Any] | None:
 
 
 def rebuild_from_artifacts(
-    paths: MuseumPaths, artifacts: Sequence[Artifact], iteration: int
+    paths: MuseumPaths,
+    artifacts: Sequence[Artifact],
+    iteration: int,
+    *,
+    status: str = "rebuilt",
+    llm: str | None = None,
+    extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Rewrite the ledger from scratch (used by ``museum rebuild``)."""
+    """Rewrite the ledger from scratch (used by ``museum rebuild``).
+
+    ``status``, ``llm`` dan ``extra`` diteruskan apa adanya ke proyeksi supaya
+    membangun ulang turunan tidak menghapus fakta tentang checkpoint: label status,
+    nama model, dan jumlah penolakan tetap sama seperti sebelum rebuild.
+    """
     if paths.ledger_jsonl.exists():
         paths.ledger_jsonl.unlink()
     append_ledger(paths, sorted(artifacts, key=lambda a: (a.iteration, a.year_fictional)))
-    return project(paths, artifacts, iteration=iteration, status="rebuilt")
+    return project(
+        paths,
+        artifacts,
+        iteration=iteration,
+        status=status,
+        llm=llm,
+        thread_id=None,
+        extra=extra,
+    )

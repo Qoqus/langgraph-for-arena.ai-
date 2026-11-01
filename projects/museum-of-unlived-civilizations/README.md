@@ -20,6 +20,7 @@ penyimpanan, dan rendering.
 | Waktu jalan | ±0,48 detik untuk 20 iterasi (mock), ±24 ms/iterasi |
 | Katalog valid | id unik, semua `refs` ada, tahun tidak mundur, kosakata terkontrol |
 | Plakat visual | SVG prosedural deterministik, tanpa model gambar |
+| Katalog | mobile-first (bottom sheet, layar penuh, tombol back perangkat) + ekspor statis 61 berkas untuk Netlify |
 
 ---
 
@@ -38,6 +39,9 @@ penyimpanan, dan rendering.
 5. **Seed empat artefak fondasi** agar rujukan silang punya sasaran sejak iterasi pertama.
 6. **Buktikan dengan tes**: 20 iterasi mock, penolakan dengan nol tulisan parsial,
    determinisme render, resume setelah proses mati, dan interrupt human-in-the-loop.
+7. **Katalog dibaca di mana saja.** Satu UI mobile-first untuk `museum serve`, lalu
+   katalog yang sama dibekukan jadi `dist/` statis agar bisa hidup di Netlify tanpa
+   server, tanpa SQLite, dan tanpa kunci API.
 
 ---
 
@@ -54,6 +58,7 @@ make run ITERATIONS=20    # 20 siklus kurasi dengan mock
 make verify               # periksa seluruh invarian katalog
 make acceptance           # buktikan 7 kriteria sukses di state sementara
 make serve                # katalog web di http://localhost:8000
+make export               # situs statis siap Netlify di dist/
 ```
 
 Atau tanpa `make`:
@@ -73,6 +78,7 @@ museum history --limit 20      # checkpoint (time travel)
 museum graph                   # graf kurasi sebagai mermaid
 museum render                  # render ulang semua plakat
 museum rebuild                 # bangun ulang proyeksi + render dari checkpoint
+museum export --out dist       # ekspor situs statis (tanpa server, tanpa SQLite)
 museum reset --yes             # hapus seluruh state museum
 ```
 
@@ -409,6 +415,86 @@ detail drawer berisi inskripsi, asal-usul, rujukan keluar/masuk yang bisa diklik
 parameter visual; peta rujukan silang (x = tahun, y = lineage, warna garis = relasi);
 filter lineage/bahan; polling 6 detik agar katalog ikut hidup saat scheduler berjalan.
 
+### 10.1 Di ponsel
+
+Tata letak **mobile-first**, bukan desktop yang dikecilkan. Di bawah 900px:
+
+- rail berubah jadi header ringkas (segel, judul, iterasi) dengan ledger 2 kolom;
+- filter pindah ke **bottom sheet** yang dipanggil dock bawah (selalu dalam jangkauan
+  ibu jari), lengkap dengan scrim, tombol tutup, `aria-expanded`, dan badge jumlah
+  filter aktif; `Escape` menutupnya;
+- timeline satu kolom: tahun → plakat 82px → judul, inskripsi (dipangkas 3 baris),
+  tag lineage/form/fungsi/rujukan;
+- peta rujukan bisa **digeser horizontal** (lebar minimum 620px) dengan node yang punya
+  lingkaran sentuh tak terlihat r=12, bukan titik 3,4px;
+- detail jadi **layar penuh** (bukan panel samping), dengan tombol tutup 44×44 dan
+  `aria-modal`; fokus dikembalikan ke entri asal saat ditutup.
+
+Keputusan khusus ponsel:
+
+- **Tombol back perangkat menutup detail.** Membuka detail melakukan `pushState` ke
+  `#/artefak/<id>`, jadi `popstate` menutup sheet, bukan meninggalkan halaman. Deep link
+  langsung ke satu artefak tidak menambah entri history, sehingga tombol tutup tidak
+  melempar pengguna keluar situs.
+- `body { overflow: hidden }` selama sheet/sheet-filter terbuka, ditambah
+  `overscroll-behavior: contain` supaya scroll tidak "bocor" ke halaman di belakang.
+- `viewport-fit=cover` + `env(safe-area-inset-*)` untuk notch dan home indicator.
+- Target sentuh ≥ 36–46px; tidak ada afordansi yang hanya muncul saat hover
+  (`@media (hover: hover)`), dan label node peta disembunyikan di perangkat sentuh.
+- `prefers-reduced-motion` mematikan transisi dan smooth scroll; efek grain dimatikan di
+  ponsel demi biaya compositing.
+
+### 10.2 Ekspor statis untuk Netlify
+
+Netlify tidak menjalankan FastAPI/SQLite, jadi katalog bisa dibekukan menjadi berkas:
+
+```bash
+make export                                  # = museum export --root museum-state --out dist
+make static STATIC_PORT=8090                 # sajikan dist/ tanpa museum sama sekali
+```
+
+`museum export` menyegarkan proyeksi dari checkpoint lebih dulu, lalu menulis:
+
+```text
+dist/
+├── index.html                  # template yang sama; window.MUSEUM_CONFIG = mode "static"
+├── assets/{style.css,app.js,icon.svg}
+├── data/catalog.json           # padanan GET /api/catalog
+├── data/artefak/<id>.json      # padanan GET /api/artifacts/{id}
+├── data/graph.json
+├── renders/<id>.svg            # plakat deterministik
+├── manifest.webmanifest, 404.html, robots.txt
+├── _headers, netlify.toml      # cache + header keamanan
+├── BACA-INI.md                 # instruksi unggah di dalam folder
+└── .museum-export              # penanda: aman ditimpa saat ekspor berikutnya
+```
+
+`app.js` punya dua mode data yang dipilih lewat `window.MUSEUM_CONFIG`:
+
+| Mode | Sumber | Polling |
+|---|---|---|
+| `api` (default, `museum serve`) | `/api/catalog`, `/api/artifacts/{id}` | 6 detik |
+| `static` (hasil ekspor) | `./data/catalog.json` + `./renders/*.svg` | tidak ada |
+
+Mode statis menyusun rujukan keluar/masuk dari katalog yang sudah dimuat, jadi membuka
+detail **tidak menambah satu pun permintaan jaringan** (diverifikasi: satu fetch total
+untuk seluruh sesi). Navigasi memakai hash, jadi tidak perlu aturan rewrite di hosting.
+
+Cara unggah:
+
+```bash
+# 1) paling cepat: seret folder dist/ ke https://app.netlify.com/drop
+# 2) Netlify CLI
+npm i -g netlify-cli
+netlify deploy --dir=dist --prod
+# 3) hosting statis apa pun (GitHub Pages, Cloudflare Pages, S3, nginx)
+python3 -m http.server -d dist 8090
+```
+
+Yang sengaja **tidak** dibawa ke versi statis: scheduler, checkpoint, HITL `museum
+review`, dan tombol yang butuh tulis. Versi statis adalah bacaan beku dari satu titik
+waktu — sama seperti katalog cetak di lobi museum.
+
 ---
 
 ## 11. Scheduler & pemulihan
@@ -494,7 +580,7 @@ jadi tidak ada jalur istimewa ke katalog. Ia juga di-render dan dicatat di ledge
 make test          # atau: .venv/bin/python -m pytest
 ```
 
-74 tes di 7 berkas:
+88 tes di 8 berkas:
 
 | Berkas | Yang dibuktikan |
 |---|---|
@@ -502,7 +588,9 @@ make test          # atau: .venv/bin/python -m pytest
 | `test_render.py` | determinisme byte, XML valid, semua form × palet × simetri, tanpa `<script>`/`<image>`/URL eksternal, artefak tidak berubah saat dirender, `Artifact` frozen |
 | `test_iteration.py` | **20 iterasi mock** (kriteria 1), penolakan tanpa tulisan parsial (kriteria 2), keluaran tak terbaca → reject, resume setelah restart, append-only, time travel, HITL approve + edit-invalid, scheduler + lock, rebuild proyeksi |
 | `test_graph.py` | node & edge yang diharapkan, kedua siklus ada dan tidak ada jalan pintas `curate → commit`, reducer katalog, isolasi `thread_id`, interrupt hanya saat `--review` |
-| `test_context.py`, `test_mock.py`, `test_web.py` | direktif selalu merujuk karya yang ada & tidak ke masa depan, siklus lima irama, mock deterministik & patuh direktif, seluruh endpoint katalog termasuk 404 dan museum kosong |
+| `test_context.py`, `test_mock.py` | direktif selalu merujuk karya yang ada & tidak ke masa depan, siklus lima irama, mock deterministik & patuh direktif |
+| `test_web.py` | seluruh endpoint katalog termasuk 404 dan museum kosong, plus kontrak UI mobile (dock, sheet filter, safe-area, reduced motion) |
+| `test_export.py` | ekspor statis: 61 berkas lengkap, `index.html` tanpa `/api` absolut, snapshot = checkpoint, detail JSON + SVG per artefak, `cited_by` sama dengan API, ekspor berulang identik, penolakan menimpa direktori asing, museum kosong butuh opt-in, perintah CLI |
 
 ---
 
@@ -519,7 +607,7 @@ sementara, lalu mencetak LULUS/GAGAL untuk ketujuh kriteria di bawah.
 | 4 | Katalog: timeline kronologis + detail rujukan silang | UI `/`, `/api/artifacts/{id}` (refs + cited_by), `test_web.py` |
 | 5 | Scheduler periodik + resume dari checkpoint | `test_scheduler_runs_until_budget`, `test_state_survives_process_restart`, `museum serve --schedule` |
 | 6 | Tanpa multi-agent, tanpa training, tanpa image generation | hanya satu graf + satu LLM; dependensi: langgraph, checkpoint-sqlite, pydantic, fastapi, uvicorn; renderer SVG murni |
-| 7 | Test suite + README (seed, mock, LLM API, asumsi) | berkas ini + 74 tes |
+| 7 | Test suite + README (seed, mock, LLM API, asumsi) | berkas ini + 88 tes |
 
 Keluaran `make acceptance` pada mesin ini:
 
@@ -530,7 +618,7 @@ Keluaran `make acceptance` pada mesin ini:
   [LULUS] 4. Timeline kronologis + rujukan silang    timeline 212–507, 37 rujukan silang, detail + cited_by tersedia
   [LULUS] 5. Scheduler/checkpoint dapat dilanjutkan  proses berhenti → checkpoint dibuka ulang → lanjut tanpa kehilangan katalog
   [LULUS] 6. Tanpa multi-agent, training, image-gen  dependensi bersih: fastapi, httpx, langgraph, ...
-  [LULUS] 7. Test suite + README lengkap             74 tes di 7 berkas; README mencakup seed, mock, LLM API, asumsi
+  [LULUS] 7. Test suite + README lengkap             88 tes di 8 berkas; README mencakup seed, mock, LLM API, asumsi
 
   7/7 kriteria terpenuhi.
 ```
@@ -565,6 +653,21 @@ Keluaran `make acceptance` pada mesin ini:
     katalog bisa dibuka saat scheduler menulis.
 11. **Mock bukan penilai kualitas prosa.** Ia membuktikan mesin (validasi, siklus,
     persistence), bukan keindahan kalimat; untuk itu ganti dengan LLM sungguhan.
+12. **Mobile-first, bukan desktop yang dipadatkan.** Filter turun ke bottom sheet dan
+    detail jadi layar penuh karena rail 318px + panel samping tidak mungkin dipakai di
+    lebar 360px. Trade-off: dua tata letak dalam satu CSS (breakpoint 900px), dengan
+    satu set markup dan satu `app.js` — bukan dua aplikasi.
+13. **Satu template, dua sumber data.** `index.html` yang sama melayani `museum serve`
+    dan hasil ekspor; mode dipilih lewat `window.MUSEUM_CONFIG` yang disuntikkan saat
+    ekspor. Trade-off: template memakai penanda `<!-- MUSEUM_CONFIG -->` yang harus
+    diganti (ekspor gagal keras bila masih ada penanda absolut, jadi tidak diam-diam
+    rusak), tetapi tidak ada duplikasi UI.
+14. **Versi statis tidak memalsukan kesegaran.** Tidak ada polling, tidak ada jam
+    "diperbarui X detik lalu", tidak ada tombol yang berpura-pura menulis. `dist/` adalah
+    bacaan beku; untuk data baru, ekspor ulang. Trade-off: satu langkah manual — dan itu
+    lebih jujur daripada situs yang terlihat hidup padahal statis.
+15. **`dist/` tidak di-commit.** Ia hasil turunan (61 berkas, ±850 kB) yang bisa dibangun
+    ulang kapan saja dari checkpoint, sama seperti `museum-state/`.
 
 ---
 
@@ -587,12 +690,14 @@ projects/museum-of-unlived-civilizations/
 │   ├── render.py         # SVG deterministik
 │   ├── seed.py           # deposit fondasi
 │   ├── store.py          # proyeksi, ledger, paths
+│   ├── export.py         # ekspor situs statis (Netlify) dari proyeksi
 │   ├── graph.py          # StateGraph, node, edge, routing, interrupt
 │   ├── runner.py         # Museum: seeding, run, resume, verify, Scheduler
 │   ├── cli.py            # museum seed|run|serve|status|verify|...
 │   ├── llm/{base,mock,openai_compat}.py
 │   └── web/{app.py, static/}
-└── tests/
+├── tests/                # 88 tes termasuk test_export.py
+└── dist/                 # hasil `make export` (gitignored, siap unggah)
 ```
 
 Proyek ini berdiri sendiri (punya `pyproject.toml` sendiri) meskipun repositori ini
@@ -609,4 +714,7 @@ adalah monorepo LangGraph; ia tidak menambah dependensi ke library mana pun di `
 | Katalog web kosong | Belum ada proyeksi: `museum seed && museum run --iterations 1`, lalu muat ulang. |
 | `museum verify` melaporkan `LEDGER_DRIFT` | Proyeksi/ledger diedit manual atau proses terbunuh saat menulis. `museum rebuild` menyusun ulang dari checkpoint. |
 | Iterasi berulang ditolak | Model (atau mock `--chaos always`) melanggar aturan. Lihat kode penolakan di `museum status` / `data/catalog.json`. |
+| `museum export` menolak: "sudah berisi berkas lain" | Direktori tujuan bukan hasil ekspor sebelumnya. Pakai `--out dist-lain`, atau `--force` bila memang ingin menghapus isinya. |
+| Situs statis menampilkan "gagal membaca data/catalog.json" | Folder `dist/` disajikan tanpa `data/` (mis. hanya `index.html` yang diunggah), atau dibuka lewat `file://` (fetch diblokir). Unggah seluruh folder, atau `make static`. |
+| Filter/dock tidak muncul di desktop | Disengaja: di ≥900px filter selalu terlihat di rail dan dock disembunyikan. |
 | Ingin mulai dari nol | `museum reset --yes`. |

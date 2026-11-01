@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .export import DEFAULT_OUT, ExportError, export_site
 from .llm import load_curator
 from .render import render_to_file
 from .runner import Museum, MuseumError, MuseumPaused, Scheduler
@@ -307,6 +308,38 @@ def cmd_review(args: argparse.Namespace) -> int:
         museum.close()
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    museum = _make_museum(args)
+    try:
+        report = museum.verify()
+        if not report["ok"]:
+            print("katalog tidak valid; ekspor dibatalkan")
+            for problem in report["problems"]:
+                print(f"  ! {problem}")
+            return 2
+        if not museum.catalog():
+            print("katalog kosong — jalankan `museum seed` lalu `museum run --iterations 20`")
+            return 1
+        if museum.has_checkpoint():
+            rebuilt = museum.rebuild()
+            print(
+                f"proyeksi disegarkan: {rebuilt['artifacts']} artefak, {rebuilt['rendered']} plakat"
+            )
+        result = export_site(args.root, args.out, force=args.force)
+        print(f"situs statis siap: {result.out}")
+        print(
+            f"  {result.files} berkas · {result.artifacts} artefak · {result.bytes / 1024:.0f} kB"
+        )
+        print("  unggah folder itu ke https://app.netlify.com/drop")
+        print(f"  atau: netlify deploy --dir={args.out} --prod")
+        return 0
+    except ExportError as exc:
+        print(f"ekspor gagal: {exc}")
+        return 2
+    finally:
+        museum.close()
+
+
 def cmd_reset(args: argparse.Namespace) -> int:
     paths = MuseumPaths.create(args.root)
     if not paths.root.exists():
@@ -384,6 +417,16 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--note", default=None)
     review.add_argument("--continue-iterations", type=int, default=0)
     review.set_defaults(func=cmd_review)
+
+    export = sub.add_parser("export", help="ekspor katalog jadi situs statis (Netlify)")
+    _add_llm_args(export)
+    export.add_argument(
+        "--out", default=DEFAULT_OUT, help=f"direktori keluaran (default: {DEFAULT_OUT})"
+    )
+    export.add_argument(
+        "--force", action="store_true", help="timpa direktori tujuan yang bukan hasil ekspor"
+    )
+    export.set_defaults(func=cmd_export)
 
     reset = sub.add_parser("reset", help="hapus state museum")
     reset.add_argument("--root", default=str(DEFAULT_ROOT))

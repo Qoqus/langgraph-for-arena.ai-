@@ -2,36 +2,55 @@
 <html lang="id">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Museum Peradaban yang Tidak Pernah Ada</title>
   <meta name="description" content="Katalog kronologis artefak dari sejarah material yang dibangun satu agen kurator, satu artefak per iterasi." />
+  <meta name="theme-color" content="#08080a" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml" />
+  <!-- MUSEUM_META -->
   <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
   <div class="grain" aria-hidden="true"></div>
+
   <div id="app">
     <aside class="rail">
-      <div class="brand">
-        <svg class="seal" viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
-          <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width=".6" opacity=".35"/>
-          <path d="M32 10 L32 54 M14 21 L50 43 M50 21 L14 43" stroke="currentColor" stroke-width=".6" opacity=".35"/>
-          <circle cx="32" cy="32" r="4" fill="currentColor" opacity=".8"/>
-        </svg>
-        <p class="eyebrow">Museum</p>
-        <h1>Peradaban yang<br />Tidak Pernah Ada</h1>
-        <p class="sub">Katalog material dari satu kurator tunggal.</p>
+      <div class="rail-top">
+        <div class="brand">
+          <svg class="seal" viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+            <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width=".6" opacity=".35"/>
+            <path d="M32 10 L32 54 M14 21 L50 43 M50 21 L14 43" stroke="currentColor" stroke-width=".6" opacity=".35"/>
+            <circle cx="32" cy="32" r="4" fill="currentColor" opacity=".8"/>
+          </svg>
+          <div class="brand-text">
+            <p class="eyebrow">Museum</p>
+            <h1>Peradaban yang <span class="brand-line">Tidak Pernah Ada</span></h1>
+          </div>
+        </div>
+
+        <div class="rail-actions">
+          <span class="iteration-badge" id="iteration-badge" title="Iterasi kurasi">iter 0</span>
+        </div>
       </div>
+
+      <p class="brand-sub">Katalog material dari satu kurator tunggal.</p>
 
       <dl class="ledger">
         <div><dt>Iterasi</dt><dd id="stat-iteration">—</dd></div>
         <div><dt>Aksesi</dt><dd id="stat-artifacts">—</dd></div>
         <div><dt>Rentang tahun</dt><dd id="stat-span">—</dd></div>
         <div><dt>Ditolak validator</dt><dd id="stat-rejections">—</dd></div>
-        <div><dt>Kurator</dt><dd id="stat-llm" class="mono">—</dd></div>
+        <div class="ledger-wide"><dt>Kurator</dt><dd id="stat-llm" class="mono">—</dd></div>
       </dl>
 
-      <nav class="filters" aria-label="Filter katalog">
+      <nav id="filters" class="filters" aria-label="Filter katalog">
+        <div class="sheet-head">
+          <span class="grab" aria-hidden="true"></span>
+          <p class="eyebrow">Filter katalog</p>
+          <button class="close small" id="filters-close" type="button" aria-label="Tutup filter">×</button>
+        </div>
         <div class="filter-block">
           <p class="eyebrow">Garis keturunan</p>
           <div id="lineage-filters" class="chips"></div>
@@ -45,7 +64,7 @@
 
       <footer class="colophon">
         <p class="status"><span class="dot" id="status-dot"></span><span id="status-text">memuat…</span></p>
-        <p>Setiap plakat dirender deterministik dari atribut JSON. Tidak ada model gambar, tidak ada agen kedua.</p>
+        <p class="colophon-note">Setiap plakat dirender deterministik dari atribut JSON. Tidak ada model gambar, tidak ada agen kedua.</p>
       </footer>
     </aside>
 
@@ -59,6 +78,7 @@
             adalah satu-satunya cara menyentuh masa lalu — dan masa lalu tidak dapat diubah.
           </p>
         </div>
+
         <section class="map-wrap" aria-labelledby="map-title">
           <div class="map-head">
             <p class="eyebrow" id="map-title">Peta rujukan silang</p>
@@ -70,7 +90,10 @@
               <span><i class="swatch x"></i>patahan</span>
             </p>
           </div>
-          <svg id="map" viewBox="0 0 900 260" role="img" aria-label="Peta rujukan silang antar artefak"></svg>
+          <div class="map-scroll" tabindex="0" role="group" aria-label="Peta dapat digeser horizontal">
+            <svg id="map" viewBox="0 0 900 260" role="img" aria-label="Peta rujukan silang antar artefak"></svg>
+          </div>
+          <p class="map-hint mono" aria-hidden="true">geser →</p>
         </section>
       </header>
 
@@ -78,6 +101,7 @@
         <h2 class="eyebrow">Kronologi</h2>
         <p id="timeline-meta" class="mono"></p>
       </section>
+
       <section id="timeline" class="timeline" aria-live="polite"></section>
 
       <footer class="page-footer">
@@ -87,12 +111,32 @@
     </main>
   </div>
 
-  <aside id="detail" class="detail" aria-hidden="true" aria-label="Detail artefak">
-    <button class="close" id="detail-close" type="button" aria-label="Tutup detail">×</button>
+  <aside id="detail" class="detail" aria-hidden="true" aria-modal="true" aria-label="Detail artefak" role="dialog">
+    <div class="detail-bar">
+      <p class="eyebrow">Detail aksesi</p>
+      <button class="close" id="detail-close" type="button" aria-label="Tutup detail">×</button>
+    </div>
     <div id="detail-body" class="detail-body"></div>
   </aside>
   <div id="scrim" class="scrim" hidden></div>
+  <div id="filter-scrim" class="scrim scrim-soft" hidden></div>
 
+  <div class="dock">
+    <button class="filter-toggle" id="filter-toggle" type="button"
+            aria-expanded="false" aria-controls="filters">
+      <span>Filter</span>
+      <span class="filter-count" id="filter-count" hidden>0</span>
+    </button>
+    <button class="dock-btn" id="to-top" type="button">↑ Atas</button>
+  </div>
+
+  <noscript>
+    <p style="padding:24px;font-family:system-ui,sans-serif">
+      Katalog ini membutuhkan JavaScript untuk menampilkan plakat dan rujukan silang.
+    </p>
+  </noscript>
+
+  <!-- MUSEUM_CONFIG -->
   <script src="/static/app.js" defer></script>
 </body>
 </html>

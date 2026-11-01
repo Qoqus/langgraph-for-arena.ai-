@@ -6,15 +6,19 @@ MUSEUM := $(VENV)/bin/museum
 ROOT ?= museum-state
 ITERATIONS ?= 20
 PORT ?= 8000
+STATIC_PORT ?= 8090
+EXPORT_DIR ?= dist
 SCHEDULE ?= 30
 
-.PHONY: help install seed run serve schedule test lint format verify graph history demo acceptance reset clean
+.PHONY: help install seed run serve schedule export static test lint format verify graph history demo acceptance reset clean
 
 help:
 	@echo "make install                  buat venv + pasang paket (editable + dev)"
 	@echo "make seed                     deposit fondasi museum"
 	@echo "make run ITERATIONS=20        jalankan siklus kurasi"
 	@echo "make serve PORT=8000          katalog web (baca proyeksi)"
+	@echo "make export                   ekspor situs statis ke dist/ (siap Netlify)"
+	@echo "make static STATIC_PORT=8090  sajikan dist/ tanpa server museum"
 	@echo "make schedule SCHEDULE=30     web + kurasi periodik tiap 30 detik"
 	@echo "make test | lint | format     kualitas kode"
 	@echo "make verify | graph | history status museum"
@@ -38,6 +42,12 @@ serve:
 
 schedule:
 	$(MUSEUM) serve --root $(ROOT) --port $(PORT) --schedule $(SCHEDULE)
+
+export:
+	$(MUSEUM) export --root $(ROOT) --out $(EXPORT_DIR)
+
+static:
+	$(PY) -m http.server --bind 0.0.0.0 --directory $(EXPORT_DIR) $(STATIC_PORT)
 
 test:
 	$(PY) -m pytest

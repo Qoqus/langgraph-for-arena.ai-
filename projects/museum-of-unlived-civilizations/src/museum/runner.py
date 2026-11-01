@@ -267,7 +267,15 @@ class Museum:
         catalog = self.catalog()
         from .store import rebuild_from_artifacts
 
-        rebuild_from_artifacts(self.paths, catalog, self.iteration())
+        snapshot = self.snapshot()
+        rebuild_from_artifacts(
+            self.paths,
+            catalog,
+            self.iteration(),
+            status=snapshot.get("status") or "rebuilt",
+            llm=getattr(self.llm, "name", None),
+            extra={"rejections": len(snapshot.get("rejections") or [])},
+        )
         for art in catalog:
             render_to_file(art, self.paths.renders)
         return {

@@ -114,3 +114,36 @@ def test_empty_museum_still_serves_the_catalog(tmp_path):
     assert payload["artifacts"] == []
     assert payload["status"] == "belum-dimulai"
     assert client.get("/api/artifacts/x").status_code == 404
+
+
+def test_ui_is_ready_for_phones(tmp_path):
+    museum = build_catalog(tmp_path)
+    try:
+        client = TestClient(create_app(museum.paths.root))
+        html = client.get("/").text
+        assert "width=device-width" in html
+        assert "viewport-fit=cover" in html
+        for hook in (
+            "filter-toggle",
+            "filters",
+            "filters-close",
+            "filter-scrim",
+            "to-top",
+            "detail-close",
+        ):
+            assert f'id="{hook}"' in html, hook
+        assert client.get("/static/icon.svg").status_code == 200
+
+        css = client.get("/static/style.css").text
+        assert "@media (min-width: 900px)" in css
+        assert "env(safe-area-inset-bottom" in css
+        assert "body.filters-open .filters" in css
+        assert "prefers-reduced-motion" in css
+        assert "overscroll-behavior" in css
+
+        app = client.get("/static/app.js").text
+        assert "window.MUSEUM_CONFIG" in app
+        assert 'mode: "api"' in app
+        assert "history.pushState" in app
+    finally:
+        museum.close()

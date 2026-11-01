@@ -1,7 +1,26 @@
-/* Museum catalog — a read-only window onto an accumulated material history. */
+/* Museum catalog — a read-only window onto an accumulated material history.
+ *
+ * Two data modes:
+ *   api     — talks to the FastAPI layer (`museum serve`), polls for new accessions.
+ *   static  — reads the exported JSON/SVG snapshot (Netlify and any static host),
+ *             with no polling because the snapshot cannot change underneath us.
+ * The mode comes from `window.MUSEUM_CONFIG`, injected by `museum export`.
+ */
 
 (() => {
   "use strict";
+
+  const CONFIG = Object.assign(
+    {
+      mode: "api",
+      catalogUrl: "/api/catalog",
+      artifactUrl: (id) => `/api/artifacts/${encodeURIComponent(id)}`,
+      svgUrl: (id) => `/api/artifacts/${encodeURIComponent(id)}/svg`,
+      pollMs: 6000,
+    },
+    window.MUSEUM_CONFIG || {}
+  );
+  const STATIC = CONFIG.mode === "static";
 
   const state = {
     payload: null,
@@ -10,6 +29,8 @@
     currentId: null,
     signature: null,
     timer: null,
+    pushedHash: false,
+    opener: null,
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -27,6 +48,8 @@
     complete: "selesai",
     seeded: "seed",
     curating: "mengkurasi",
+    rebuilt: "proyeksi dibangun ulang",
+    paused: "menunggu review",
   };
 
   async function fetchJSON(url) {
@@ -51,6 +74,7 @@
     const hasArt = (counts.artifacts || 0) > 0;
     dot.className = "dot" + (data.status === "complete" ? " done" : hasArt ? " live" : "");
     $("#status-text").textContent = STATUS_ID[data.status] || data.status || "tidak diketahui";
+    $("#iteration-badge").textContent = `iter ${data.iteration ?? 0}`;
   }
 
   function chip(label, count, pressed, onClick) {
@@ -73,15 +97,15 @@
     const lineages = data.lineage_counts || {};
     const materials = data.material_counts || {};
 
-    const allLineage = chip("semua", data.counts?.artifacts ?? 0, state.lineage.size === 0, () => {
-      state.lineage.clear();
-      applyFilters();
-    });
-    lineageBox.appendChild(allLineage);
+    lineageBox.appendChild(
+      chip("semua", data.counts?.artifacts ?? 0, state.lineage.size === 0, () => {
+        state.lineage.clear();
+        applyFilters();
+      })
+    );
 
     Object.entries(lineages).forEach(([lineage, count]) => {
-      const active = state.lineage.has(lineage);
-      lineageBox.appendChild(chip(lineage, count, active, () => {
+      lineageBox.appendChild(chip(lineage, count, state.lineage.has(lineage), () => {
         if (state.lineage.has(lineage)) state.lineage.delete(lineage);
         else state.lineage.add(lineage);
         applyFilters();
@@ -89,13 +113,29 @@
     });
 
     Object.entries(materials).forEach(([material, count]) => {
-      const active = state.material.has(material);
-      materialBox.appendChild(chip(material, count, active, () => {
+      materialBox.appendChild(chip(material, count, state.material.has(material), () => {
         if (state.material.has(material)) state.material.delete(material);
         else state.material.add(material);
         applyFilters();
       }));
     });
+
+    updateFilterCount();
+  }
+
+  function updateFilterCount() {
+    const active = state.lineage.size + state.material.size;
+    const badge = $("#filter-count");
+    badge.textContent = active;
+    badge.hidden = active === 0;
+    $("#clear-filters").hidden = active === 0;
+    $("#filter-toggle").classList.toggle("is-active", active > 0);
+  }
+
+  function setFiltersOpen(open) {
+    document.body.classList.toggle("filters-open", open);
+    $("#filter-toggle").setAttribute("aria-expanded", open ? "true" : "false");
+    $("#filter-scrim").hidden = !open;
   }
 
   /* ----------------------------------------------------------------- map */
@@ -108,7 +148,6 @@
       svg.innerHTML = `<text x="20" y="130" class="axis-label">BELUM ADA AKSESI</text>`;
       return;
     }
-    const NS = "http://www.w3.org/2000/svg";
     const lineages = Object.keys(data.lineage_counts || {});
     const W = 900, H = 260, padL = 66, padR = 26, padT = 26, padB = 34;
     const years = artifacts.map((a) => a.year_fictional);
@@ -125,14 +164,12 @@
 
     const parts = [];
 
-    // lanes
     lineages.forEach((lineage) => {
       const y = laneY(lineage);
       parts.push(`<line class="lane" x1="${padL - 8}" y1="${y}" x2="${W - padR}" y2="${y}" />`);
       parts.push(`<text class="lane-label" x="0" y="${y + 3}">${esc(lineage)}</text>`);
     });
 
-    // year axis
     const ticks = 4;
     for (let i = 0; i <= ticks; i += 1) {
       const t = i / ticks;
@@ -144,7 +181,6 @@
 
     const byId = Object.fromEntries(artifacts.map((a) => [a.id, a]));
 
-    // edges (source = older, target = newer)
     (data.graph?.edges || []).forEach((edge) => {
       const source = byId[edge.source];
       const target = byId[edge.target];
@@ -159,15 +195,17 @@
       parts.push(`<path class="edge ${REL_CLASS[edge.relation] || "k"}" d="${path}" />`);
     });
 
-    // nodes
     artifacts.forEach((art) => {
       const px = x(art.year_fictional);
       const py = laneY(art.lineage);
       const cited = (data.most_cited || []).some((item) => item.id === art.id);
       const r = cited ? 5 : 3.4;
+      // The visible dot stays small for legibility; the hit target is finger-sized.
       parts.push(
-        `<g class="node" data-id="${esc(art.id)}" tabindex="0">
-           <circle cx="${px}" cy="${py}" r="${r}" />
+        `<g class="node" data-id="${esc(art.id)}" tabindex="0" role="button"
+            aria-label="Buka ${esc(art.title)}, ${art.year_fictional}">
+           <circle class="node-hit" cx="${px}" cy="${py}" r="12" />
+           <circle class="node-dot" cx="${px}" cy="${py}" r="${r}" />
            <text x="${px + 7}" y="${py - 7}">${esc(art.id)}</text>
          </g>`
       );
@@ -175,7 +213,7 @@
 
     svg.innerHTML = parts.join("");
     svg.querySelectorAll(".node").forEach((node) => {
-      const open = () => openDetail(node.dataset.id);
+      const open = () => openDetail(node.dataset.id, { opener: node });
       node.addEventListener("click", open);
       node.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -205,13 +243,14 @@
       : "tanpa rujukan (fondasi)";
     const accession = String(art.id).toUpperCase();
     return `
-      <article class="entry" data-id="${esc(art.id)}" tabindex="0">
+      <article class="entry" data-id="${esc(art.id)}" tabindex="0" role="button"
+               aria-label="Buka detail ${esc(art.title)}, tahun ${art.year_fictional}">
         <div class="entry-year">
           <span class="year">${art.year_fictional}</span>
           <span class="iter">ITER ${String(art.iteration).padStart(2, "0")}</span>
         </div>
         <figure class="plaque">
-          <img loading="lazy" src="/api/artifacts/${encodeURIComponent(art.id)}/svg" alt="Plakat ${esc(art.title)}" />
+          <img loading="lazy" src="${esc(CONFIG.svgUrl(art.id))}" alt="Plakat ${esc(art.title)}" />
           <figcaption><span>${esc(accession)}</span><span>${esc(art.visual.palette)}</span></figcaption>
         </figure>
         <div class="entry-body">
@@ -251,10 +290,13 @@
       `${visible.length} / ${all.length} aksesi · urut tahun fiktif`;
 
     box.querySelectorAll(".entry").forEach((entry) => {
-      const open = () => openDetail(entry.dataset.id);
+      const open = () => openDetail(entry.dataset.id, { opener: entry });
       entry.addEventListener("click", open);
       entry.addEventListener("keydown", (event) => {
-        if (event.key === "Enter") open();
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          open();
+        }
       });
     });
   }
@@ -266,27 +308,114 @@
 
   /* -------------------------------------------------------------- detail */
 
-  async function openDetail(id) {
+  function staticDetail(id) {
+    const artifacts = state.payload?.artifacts || [];
+    const byId = new Map(artifacts.map((a) => [a.id, a]));
+    const art = byId.get(id);
+    if (!art) throw new Error(`artefak ${id} tidak ada di katalog ini`);
+
+    const refs = (art.refs || []).map((ref) => {
+      const target = byId.get(ref.id);
+      return {
+        ...ref,
+        target: target
+          ? {
+              id: target.id,
+              title: target.title,
+              year_fictional: target.year_fictional,
+              lineage: target.lineage,
+            }
+          : null,
+      };
+    });
+
+    const citedBy = [];
+    artifacts.forEach((other) => {
+      (other.refs || []).forEach((ref) => {
+        if (ref.id !== id) return;
+        citedBy.push({
+          id: other.id,
+          title: other.title,
+          year: other.year_fictional,
+          relation: ref.relation,
+          note: ref.note,
+        });
+      });
+    });
+
+    return { artifact: art, refs, cited_by: citedBy };
+  }
+
+  async function loadDetail(id) {
+    if (STATIC) return staticDetail(id);
+    return fetchJSON(CONFIG.artifactUrl(id));
+  }
+
+  async function openDetail(id, options = {}) {
     if (!id) return;
+    const { push = true } = options;
+    const first = !state.currentId;
+    if (document.body.classList.contains("filters-open")) setFiltersOpen(false);
+
+    if (first) state.opener = options.opener || document.activeElement;
     state.currentId = id;
+
     const drawer = $("#detail");
     const body = $("#detail-body");
     drawer.classList.add("open");
     drawer.setAttribute("aria-hidden", "false");
     $("#scrim").hidden = false;
+    document.body.classList.add("sheet-open");
     body.innerHTML = `<p class="loading">MEMUAT ${esc(id)}…</p>`;
-    if (location.hash !== `#/artefak/${id}`) history.replaceState(null, "", `#/artefak/${id}`);
+
+    const hash = `#/artefak/${encodeURIComponent(id)}`;
+    if (push && location.hash !== hash) {
+      history.pushState({ museumDetail: id }, "", hash);
+      state.pushedHash = true;
+    }
+
+    drawer.querySelector(".close").focus({ preventScroll: true });
 
     try {
-      const data = await fetchJSON(`/api/artifacts/${encodeURIComponent(id)}`);
+      const data = await loadDetail(id);
       if (state.currentId !== id) return;
       body.innerHTML = detailTemplate(data);
+      body.scrollTop = 0;
+      drawer.scrollTop = 0;
       body.querySelectorAll("[data-goto]").forEach((el) => {
         el.addEventListener("click", () => openDetail(el.dataset.goto));
       });
     } catch (error) {
       body.innerHTML = `<p class="loading">GAGAL MEMUAT: ${esc(error.message)}</p>`;
     }
+  }
+
+  function hideDetail() {
+    state.currentId = null;
+    const drawer = $("#detail");
+    drawer.classList.remove("open");
+    drawer.setAttribute("aria-hidden", "true");
+    $("#scrim").hidden = true;
+    document.body.classList.remove("sheet-open");
+    $("#detail-body").innerHTML = "";
+    if (state.opener && typeof state.opener.focus === "function") {
+      state.opener.focus({ preventScroll: true });
+    }
+    state.opener = null;
+  }
+
+  function closeDetail(options = {}) {
+    const { fromHistory = false } = options;
+    const hadHash = /^#\/artefak\//.test(location.hash);
+    hideDetail();
+    if (hadHash && state.pushedHash && !fromHistory) {
+      // Undo our own pushState so the phone's back button stays predictable.
+      state.pushedHash = false;
+      history.back();
+      return;
+    }
+    state.pushedHash = false;
+    if (hadHash) history.replaceState(null, "", location.pathname + location.search);
   }
 
   function refBlock(ref) {
@@ -325,7 +454,7 @@
     return `
       <p class="eyebrow">Aksesi ${esc(art.id)} · iterasi ${art.iteration}</p>
       <div class="detail-figure">
-        <img src="/api/artifacts/${encodeURIComponent(art.id)}/svg?refresh=true" alt="Plakat ${esc(art.title)}" />
+        <img src="${esc(CONFIG.svgUrl(art.id))}" alt="Plakat ${esc(art.title)}" />
       </div>
       <h2>${esc(art.title)}</h2>
       <div class="kicker">
@@ -366,15 +495,6 @@
     `;
   }
 
-  function closeDetail() {
-    state.currentId = null;
-    $("#detail").classList.remove("open");
-    $("#detail").setAttribute("aria-hidden", "true");
-    $("#scrim").hidden = true;
-    $("#detail-body").innerHTML = "";
-    if (location.hash) history.replaceState(null, "", location.pathname + location.search);
-  }
-
   /* ---------------------------------------------------------------- boot */
 
   function renderAll() {
@@ -386,7 +506,7 @@
 
   async function refresh() {
     try {
-      const data = await fetchJSON("/api/catalog");
+      const data = await fetchJSON(CONFIG.catalogUrl);
       state.payload = data;
       const signature = `${data.generated_at}|${data.iteration}|${(data.artifacts || []).length}`;
       if (signature !== state.signature) {
@@ -398,33 +518,72 @@
         renderAll();
       }
     } catch (error) {
-      $("#status-text").textContent = "server tidak terjangkau";
+      $("#status-text").textContent = STATIC
+        ? "gagal membaca data/catalog.json"
+        : "server tidak terjangkau";
       $("#status-dot").className = "dot";
     }
   }
 
+  function trapFocus(event) {
+    const focusable = [...document.querySelectorAll("#detail button, #detail a[href]")];
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
+
   function boot() {
-    $("#detail-close").addEventListener("click", closeDetail);
-    $("#scrim").addEventListener("click", closeDetail);
+    $("#detail-close").addEventListener("click", () => closeDetail());
+    $("#scrim").addEventListener("click", () => closeDetail());
     $("#clear-filters").addEventListener("click", () => {
       state.lineage.clear();
       state.material.clear();
       applyFilters();
     });
-    document.addEventListener("keydown", (event) => {
-      if (event.key === "Escape" && state.currentId) closeDetail();
+    $("#filter-toggle").addEventListener("click", () => {
+      setFiltersOpen(!document.body.classList.contains("filters-open"));
     });
-    window.addEventListener("hashchange", () => {
-      const match = location.hash.match(/^#\/artefak\/(.+)$/);
-      if (match) openDetail(decodeURIComponent(match[1]));
+    $("#filters-close").addEventListener("click", () => setFiltersOpen(false));
+    $("#filter-scrim").addEventListener("click", () => setFiltersOpen(false));
+    $("#to-top").addEventListener("click", () => {
+      const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+      window.scrollTo({ top: 0, behavior: query?.matches ? "auto" : "smooth" });
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Tab" && state.currentId) {
+        trapFocus(event);
+        return;
+      }
+      if (event.key !== "Escape") return;
+      if (document.body.classList.contains("filters-open")) setFiltersOpen(false);
       else if (state.currentId) closeDetail();
+    });
+
+    window.addEventListener("popstate", () => {
+      const match = location.hash.match(/^#\/artefak\/(.+)$/);
+      if (match) openDetail(decodeURIComponent(match[1]), { push: false });
+      else if (state.currentId) closeDetail({ fromHistory: true });
     });
 
     const initial = location.hash.match(/^#\/artefak\/(.+)$/);
     refresh().then(() => {
-      if (initial) openDetail(decodeURIComponent(initial[1]));
+      if (initial) openDetail(decodeURIComponent(initial[1]), { push: false });
     });
-    state.timer = setInterval(refresh, 6000);
+
+    if (!STATIC && CONFIG.pollMs > 0) {
+      state.timer = setInterval(() => {
+        if (document.hidden) return;
+        refresh();
+      }, CONFIG.pollMs);
+    }
   }
 
   document.addEventListener("DOMContentLoaded", boot);
