@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# Runtime state: the museum's own memory is generated, not source.
+data/
+renders/
+museum-state/
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm

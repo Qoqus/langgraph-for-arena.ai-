@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Museum Peradaban yang Tidak Pernah Ada</title>
+  <meta name="description" content="Katalog kronologis artefak dari sejarah material yang dibangun satu agen kurator, satu artefak per iterasi." />
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="grain" aria-hidden="true"></div>
+  <div id="app">
+    <aside class="rail">
+      <div class="brand">
+        <svg class="seal" viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="1" opacity=".5"/>
+          <circle cx="32" cy="32" r="22" fill="none" stroke="currentColor" stroke-width=".6" opacity=".35"/>
+          <path d="M32 10 L32 54 M14 21 L50 43 M50 21 L14 43" stroke="currentColor" stroke-width=".6" opacity=".35"/>
+          <circle cx="32" cy="32" r="4" fill="currentColor" opacity=".8"/>
+        </svg>
+        <p class="eyebrow">Museum</p>
+        <h1>Peradaban yang<br />Tidak Pernah Ada</h1>
+        <p class="sub">Katalog material dari satu kurator tunggal.</p>
+      </div>
+
+      <dl class="ledger">
+        <div><dt>Iterasi</dt><dd id="stat-iteration">—</dd></div>
+        <div><dt>Aksesi</dt><dd id="stat-artifacts">—</dd></div>
+        <div><dt>Rentang tahun</dt><dd id="stat-span">—</dd></div>
+        <div><dt>Ditolak validator</dt><dd id="stat-rejections">—</dd></div>
+        <div><dt>Kurator</dt><dd id="stat-llm" class="mono">—</dd></div>
+      </dl>
+
+      <nav class="filters" aria-label="Filter katalog">
+        <div class="filter-block">
+          <p class="eyebrow">Garis keturunan</p>
+          <div id="lineage-filters" class="chips"></div>
+        </div>
+        <div class="filter-block">
+          <p class="eyebrow">Bahan</p>
+          <div id="material-filters" class="chips"></div>
+        </div>
+        <button id="clear-filters" class="ghost" type="button">bersihkan filter</button>
+      </nav>
+
+      <footer class="colophon">
+        <p class="status"><span class="dot" id="status-dot"></span><span id="status-text">memuat…</span></p>
+        <p>Setiap plakat dirender deterministik dari atribut JSON. Tidak ada model gambar, tidak ada agen kedua.</p>
+      </footer>
+    </aside>
+
+    <main>
+      <header class="masthead">
+        <div class="masthead-copy">
+          <p class="eyebrow">Katalog / kronologi material</p>
+          <h2>Satu kurator membaca seluruh arsip, lalu menambahkan tepat satu benda.</h2>
+          <p class="deck">
+            Bahan, motif, dan garis keturunan berasal dari kosakata terkontrol. Rujukan silang
+            adalah satu-satunya cara menyentuh masa lalu — dan masa lalu tidak dapat diubah.
+          </p>
+        </div>
+        <section class="map-wrap" aria-labelledby="map-title">
+          <div class="map-head">
+            <p class="eyebrow" id="map-title">Peta rujukan silang</p>
+            <p class="map-legend mono">
+              <span><i class="swatch t"></i>turunan</span>
+              <span><i class="swatch p"></i>pemulihan</span>
+              <span><i class="swatch r"></i>resonansi</span>
+              <span><i class="swatch k"></i>kutipan</span>
+              <span><i class="swatch x"></i>patahan</span>
+            </p>
+          </div>
+          <svg id="map" viewBox="0 0 900 260" role="img" aria-label="Peta rujukan silang antar artefak"></svg>
+        </section>
+      </header>
+
+      <section class="timeline-head">
+        <h2 class="eyebrow">Kronologi</h2>
+        <p id="timeline-meta" class="mono"></p>
+      </section>
+      <section id="timeline" class="timeline" aria-live="polite"></section>
+
+      <footer class="page-footer">
+        <p class="mono">MUSEUM PERADABAN YANG TIDAK PERNAH ADA · LANGGRAPH STATEGRAPH · SQLITE CHECKPOINTER</p>
+        <p>Katalog ini adalah proyeksi dari checkpoint. Bila berkas proyeksi hilang, katalog dapat dibangun ulang dari state.</p>
+      </footer>
+    </main>
+  </div>
+
+  <aside id="detail" class="detail" aria-hidden="true" aria-label="Detail artefak">
+    <button class="close" id="detail-close" type="button" aria-label="Tutup detail">×</button>
+    <div id="detail-body" class="detail-body"></div>
+  </aside>
+  <div id="scrim" class="scrim" hidden></div>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
