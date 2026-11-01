@@ -8,7 +8,7 @@ ITERATIONS ?= 20
 PORT ?= 8000
 SCHEDULE ?= 30
 
-.PHONY: help install seed run serve schedule test lint format verify graph history demo reset clean
+.PHONY: help install seed run serve schedule test lint format verify graph history demo acceptance reset clean
 
 help:
 	@echo "make install                  buat venv + pasang paket (editable + dev)"
@@ -19,6 +19,7 @@ help:
 	@echo "make test | lint | format     kualitas kode"
 	@echo "make verify | graph | history status museum"
 	@echo "make demo                     seed + 20 iterasi + verify, sekali jalan"
+	@echo "make acceptance               buktikan 7 kriteria sukses di state sementara"
 	@echo "make reset                    hapus museum-state (destruktif)"
 
 install:
@@ -42,11 +43,11 @@ test:
 	$(PY) -m pytest
 
 lint:
-	$(RUFF) check src tests
+	$(RUFF) check src tests scripts
 
 format:
-	$(RUFF) format src tests
-	$(RUFF) check --fix src tests
+	$(RUFF) format src tests scripts
+	$(RUFF) check --fix src tests scripts
 
 verify:
 	$(MUSEUM) verify --root $(ROOT)
@@ -59,6 +60,9 @@ history:
 
 demo: install
 	bash scripts/demo.sh
+
+acceptance:
+	$(PY) scripts/acceptance.py
 
 reset:
 	$(MUSEUM) reset --root $(ROOT) --yes

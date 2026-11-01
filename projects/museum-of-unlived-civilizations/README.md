@@ -52,6 +52,7 @@ make install              # venv + pip install -e ".[dev]"
 make seed                 # deposit fondasi: 4 artefak
 make run ITERATIONS=20    # 20 siklus kurasi dengan mock
 make verify               # periksa seluruh invarian katalog
+make acceptance           # buktikan 7 kriteria sukses di state sementara
 make serve                # katalog web di http://localhost:8000
 ```
 
@@ -207,6 +208,10 @@ Konsekuensi praktis:
   iterasi 2) menyisakan `next = ("curate",)`, 5 artefak, dan `verify` bersih; setelah
   `museum run --iterations 2` museum melanjutkan ke iterasi 4 dengan 7 artefak — tanpa
   duplikat dan tanpa artefak yatim.
+- **Ledger idempoten**: commit menulis `ledger.jsonl` lebih dulu, lalu checkpoint. Kalau
+  proses mati di antara keduanya, commit yang diulang menemukan id yang sudah ada dan
+  tidak menulis ganda; `museum rebuild` menyusun ulang ledger dari checkpoint bila
+  keduanya sempat berbeda.
 - **Time travel**: `museum history` menampilkan rantai checkpoint (`next`, status, jumlah
   artefak, draf yang tertunda). Forking ke masa lalu secara teknis mungkin di lapisan
   eksekusi (`update_state`), tetapi **sengaja tidak diekspos untuk mengedit artefak**:
@@ -503,6 +508,9 @@ make test          # atau: .venv/bin/python -m pytest
 
 ## 15. Kriteria sukses → bukti
 
+Satu perintah untuk semuanya: **`make acceptance`** menjalankan museum di direktori
+sementara, lalu mencetak LULUS/GAGAL untuk ketujuh kriteria di bawah.
+
 | # | Kriteria | Di mana dibuktikan |
 |---|---|---|
 | 1 | 20 iterasi berurutan dengan mock → katalog valid | `test_twenty_iterations_produce_a_valid_chronology`; `make run ITERATIONS=20` lalu `make verify` |
@@ -512,6 +520,20 @@ make test          # atau: .venv/bin/python -m pytest
 | 5 | Scheduler periodik + resume dari checkpoint | `test_scheduler_runs_until_budget`, `test_state_survives_process_restart`, `museum serve --schedule` |
 | 6 | Tanpa multi-agent, tanpa training, tanpa image generation | hanya satu graf + satu LLM; dependensi: langgraph, checkpoint-sqlite, pydantic, fastapi, uvicorn; renderer SVG murni |
 | 7 | Test suite + README (seed, mock, LLM API, asumsi) | berkas ini + 74 tes |
+
+Keluaran `make acceptance` pada mesin ini:
+
+```text
+  [LULUS] 1. 20 iterasi mock → katalog valid         20 iterasi → 24 artefak valid, tahun 212–507
+  [LULUS] 2. Validator menolak tanpa state parsial   ditolak: REF_MISSING; katalog & ledger tidak berubah
+  [LULUS] 3. Visual deterministik per artefak        24 plakat SVG terparse, deterministik dari JSON
+  [LULUS] 4. Timeline kronologis + rujukan silang    timeline 212–507, 37 rujukan silang, detail + cited_by tersedia
+  [LULUS] 5. Scheduler/checkpoint dapat dilanjutkan  proses berhenti → checkpoint dibuka ulang → lanjut tanpa kehilangan katalog
+  [LULUS] 6. Tanpa multi-agent, training, image-gen  dependensi bersih: fastapi, httpx, langgraph, ...
+  [LULUS] 7. Test suite + README lengkap             74 tes di 7 berkas; README mencakup seed, mock, LLM API, asumsi
+
+  7/7 kriteria terpenuhi.
+```
 
 ---
 
@@ -554,6 +576,7 @@ projects/museum-of-unlived-civilizations/
 ├── Makefile
 ├── pyproject.toml
 ├── scripts/demo.sh
+├── scripts/acceptance.py  # bukti 7 kriteria sukses
 ├── src/museum/
 │   ├── vocabulary.py     # konstitusi: lineage, bahan, motif, form, fungsi, palet
 │   ├── schema.py         # ArtifactDraft / Artifact (frozen)
