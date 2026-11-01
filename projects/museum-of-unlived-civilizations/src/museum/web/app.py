@@ -52,14 +52,14 @@ def create_app(root: str | Path | None = None) -> FastAPI:
         data = payload()
         return {a["id"]: Artifact.model_validate(a) for a in data.get("artifacts", [])}
 
-    @app.get("/", include_in_schema=False)
+    @app.api_route("/", methods=["GET", "HEAD"], include_in_schema=False)
     def index() -> FileResponse:
         index_file = STATIC_DIR / "index.html"
         if not index_file.exists():
             raise HTTPException(500, "catalog UI missing")
         return FileResponse(index_file)
 
-    @app.get("/healthz")
+    @app.api_route("/healthz", methods=["GET", "HEAD"])
     def healthz() -> dict[str, str]:
         return {"ok": "true"}
 
