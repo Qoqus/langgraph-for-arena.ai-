@@ -77,14 +77,32 @@
     $("#iteration-badge").textContent = `iter ${data.iteration ?? 0}`;
   }
 
-  function chip(label, count, pressed, onClick) {
+  function chip(label, count, kind, pressed, onClick) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "chip";
+    button.dataset.kind = kind;
+    button.dataset.chip = label;
     button.setAttribute("aria-pressed", pressed ? "true" : "false");
     button.innerHTML = `${esc(label)}<span class="count">${count}</span>`;
     button.addEventListener("click", onClick);
     return button;
+  }
+
+  /* Repaint the pressed state in place: rebuilding the chips would throw away
+     keyboard focus and the scroll position of the filter sheet. */
+  function syncChips() {
+    document.querySelectorAll(".chip").forEach((el) => {
+      const kind = el.dataset.kind;
+      const pressed =
+        kind === "all"
+          ? state.lineage.size === 0
+          : kind === "lineage"
+            ? state.lineage.has(el.dataset.chip)
+            : state.material.has(el.dataset.chip);
+      el.setAttribute("aria-pressed", pressed ? "true" : "false");
+    });
+    updateFilterCount();
   }
 
   function renderFilters() {
@@ -98,29 +116,33 @@
     const materials = data.material_counts || {};
 
     lineageBox.appendChild(
-      chip("semua", data.counts?.artifacts ?? 0, state.lineage.size === 0, () => {
+      chip("semua", data.counts?.artifacts ?? 0, "all", state.lineage.size === 0, () => {
         state.lineage.clear();
         applyFilters();
       })
     );
 
     Object.entries(lineages).forEach(([lineage, count]) => {
-      lineageBox.appendChild(chip(lineage, count, state.lineage.has(lineage), () => {
-        if (state.lineage.has(lineage)) state.lineage.delete(lineage);
-        else state.lineage.add(lineage);
-        applyFilters();
-      }));
+      lineageBox.appendChild(
+        chip(lineage, count, "lineage", state.lineage.has(lineage), () => {
+          if (state.lineage.has(lineage)) state.lineage.delete(lineage);
+          else state.lineage.add(lineage);
+          applyFilters();
+        })
+      );
     });
 
     Object.entries(materials).forEach(([material, count]) => {
-      materialBox.appendChild(chip(material, count, state.material.has(material), () => {
-        if (state.material.has(material)) state.material.delete(material);
-        else state.material.add(material);
-        applyFilters();
-      }));
+      materialBox.appendChild(
+        chip(material, count, "material", state.material.has(material), () => {
+          if (state.material.has(material)) state.material.delete(material);
+          else state.material.add(material);
+          applyFilters();
+        })
+      );
     });
 
-    updateFilterCount();
+    syncChips();
   }
 
   function updateFilterCount() {
@@ -302,7 +324,7 @@
   }
 
   function applyFilters() {
-    renderFilters();
+    syncChips();
     renderTimeline();
   }
 

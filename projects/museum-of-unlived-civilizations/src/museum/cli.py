@@ -317,15 +317,16 @@ def cmd_export(args: argparse.Namespace) -> int:
             for problem in report["problems"]:
                 print(f"  ! {problem}")
             return 2
-        if not museum.catalog():
+        if not museum.catalog() and not args.allow_empty:
             print("katalog kosong — jalankan `museum seed` lalu `museum run --iterations 20`")
+            print("  (atau ekspor katalog kosong dengan --allow-empty)")
             return 1
         if museum.has_checkpoint():
             rebuilt = museum.rebuild()
             print(
                 f"proyeksi disegarkan: {rebuilt['artifacts']} artefak, {rebuilt['rendered']} plakat"
             )
-        result = export_site(args.root, args.out, force=args.force)
+        result = export_site(args.root, args.out, force=args.force, allow_empty=args.allow_empty)
         print(f"situs statis siap: {result.out}")
         print(
             f"  {result.files} berkas · {result.artifacts} artefak · {result.bytes / 1024:.0f} kB"
@@ -425,6 +426,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     export.add_argument(
         "--force", action="store_true", help="timpa direktori tujuan yang bukan hasil ekspor"
+    )
+    export.add_argument(
+        "--allow-empty", action="store_true", help="izinkan ekspor saat katalog masih kosong"
     )
     export.set_defaults(func=cmd_export)
 

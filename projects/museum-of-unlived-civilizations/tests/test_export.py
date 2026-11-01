@@ -209,6 +209,29 @@ def test_rebuild_keeps_the_checkpoint_facts(museum):
     assert [a["id"] for a in after["artifacts"]] == [a["id"] for a in before["artifacts"]]
 
 
+def test_cli_export_accepts_an_empty_museum(tmp_path):
+    from museum.cli import main
+
+    out = tmp_path / "kosong"
+    assert (
+        main(["export", "--root", str(tmp_path / "state"), "--out", str(out), "--llm", "mock"]) == 1
+    )
+    code = main(
+        [
+            "export",
+            "--root",
+            str(tmp_path / "state"),
+            "--out",
+            str(out),
+            "--llm",
+            "mock",
+            "--allow-empty",
+        ]
+    )
+    assert code == 0
+    assert (out / "index.html").is_file()
+
+
 def test_cli_export_command(museum, tmp_path):
     from museum.cli import main
 

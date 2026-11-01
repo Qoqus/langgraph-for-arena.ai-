@@ -580,7 +580,7 @@ jadi tidak ada jalur istimewa ke katalog. Ia juga di-render dan dicatat di ledge
 make test          # atau: .venv/bin/python -m pytest
 ```
 
-88 tes di 8 berkas:
+89 tes di 8 berkas:
 
 | Berkas | Yang dibuktikan |
 |---|---|
@@ -607,7 +607,7 @@ sementara, lalu mencetak LULUS/GAGAL untuk ketujuh kriteria di bawah.
 | 4 | Katalog: timeline kronologis + detail rujukan silang | UI `/`, `/api/artifacts/{id}` (refs + cited_by), `test_web.py` |
 | 5 | Scheduler periodik + resume dari checkpoint | `test_scheduler_runs_until_budget`, `test_state_survives_process_restart`, `museum serve --schedule` |
 | 6 | Tanpa multi-agent, tanpa training, tanpa image generation | hanya satu graf + satu LLM; dependensi: langgraph, checkpoint-sqlite, pydantic, fastapi, uvicorn; renderer SVG murni |
-| 7 | Test suite + README (seed, mock, LLM API, asumsi) | berkas ini + 88 tes |
+| 7 | Test suite + README (seed, mock, LLM API, asumsi) | berkas ini + 89 tes |
 
 Keluaran `make acceptance` pada mesin ini:
 
@@ -618,7 +618,7 @@ Keluaran `make acceptance` pada mesin ini:
   [LULUS] 4. Timeline kronologis + rujukan silang    timeline 212–507, 37 rujukan silang, detail + cited_by tersedia
   [LULUS] 5. Scheduler/checkpoint dapat dilanjutkan  proses berhenti → checkpoint dibuka ulang → lanjut tanpa kehilangan katalog
   [LULUS] 6. Tanpa multi-agent, training, image-gen  dependensi bersih: fastapi, httpx, langgraph, ...
-  [LULUS] 7. Test suite + README lengkap             88 tes di 8 berkas; README mencakup seed, mock, LLM API, asumsi
+  [LULUS] 7. Test suite + README lengkap             89 tes di 8 berkas; README mencakup seed, mock, LLM API, asumsi
 
   7/7 kriteria terpenuhi.
 ```
@@ -696,7 +696,7 @@ projects/museum-of-unlived-civilizations/
 │   ├── cli.py            # museum seed|run|serve|status|verify|...
 │   ├── llm/{base,mock,openai_compat}.py
 │   └── web/{app.py, static/}
-├── tests/                # 88 tes termasuk test_export.py
+├── tests/                # 89 tes termasuk test_export.py
 └── dist/                 # hasil `make export` (gitignored, siap unggah)
 ```
 
